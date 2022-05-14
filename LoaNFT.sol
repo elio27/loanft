@@ -14,6 +14,18 @@ interface IEmprunteur {
         ) external;
 }
 
+
+/*
+    /$$                           /$$   /$$ /$$$$$$$$ /$$$$$$$$
+    | $$                          | $$$ | $$| $$_____/|__  $$__/
+    | $$        /$$$$$$   /$$$$$$ | $$$$| $$| $$         | $$   
+    | $$       /$$__  $$ |____  $$| $$ $$ $$| $$$$$      | $$   
+    | $$      | $$  \ $$  /$$$$$$$| $$  $$$$| $$__/      | $$   
+    | $$      | $$  | $$ /$$__  $$| $$\  $$$| $$         | $$   
+    | $$$$$$$$|  $$$$$$/|  $$$$$$$| $$ \  $$| $$         | $$   
+    |________/ \______/  \_______/|__/  \__/|__/         |__/   
+*/
+
 contract loanft {
 
     function unsafeIncrement(uint256 i) internal pure returns(uint256) {
@@ -32,15 +44,15 @@ contract loanft {
         _;
     }
 
-    address public owner; // Adresse du proprietaire du contrat
+    address public owner; // Address of the contract Owner
     mapping(address => mapping(uint256 => address)) public erc721Owners;
     mapping(address => mapping(uint256 => mapping(address => uint256))) public erc1155Owners;
     mapping(address => Collection) public collections;
-    uint128 public feePerToken; // Prix en eth de l'emprunt d'un NFT
-    uint128 public devShare; // Part, sur 1000, de frais pris par l'equipe du projet
+    uint128 public feePerToken; // Price - in eth - of the borrowing of each NFT
+    uint128 public devShare; // Share of the cost taken by the project's team
 
     constructor(uint128 _feePerToken, uint128 _devShare) {
-        // Definit les variables de contrat
+        // set the contract variables
         owner = msg.sender;
         feePerToken = _feePerToken;
         devShare = _devShare;
@@ -48,7 +60,7 @@ contract loanft {
 
 
     /*
-        DEPOSER et RECUPERER des NFTs de type ERC721
+        DEPOSIT and WITHDRAW erc721 NFT(s)
     */
     function depositERC721(address _nftContract, uint256[] memory _ids) external {
         require(tx.origin == msg.sender, "Only EOAs can deposit.");
@@ -80,7 +92,7 @@ contract loanft {
 
 
     /*
-        DEPOSER et RECUPERER des NFTs de type ERC1155
+        DEPOSIT and WITHDRAW erc1155 NFT(s)
     */
     function depositERC1155(address _nftContract, uint256[] memory _ids, uint[] memory _amounts) external {
         
@@ -118,9 +130,9 @@ contract loanft {
         uint256 iniBalance = address(this).balance;
         uint256 cost;
 
-        // Le fonctionnement est similaire mais le code est different en fonction du type de NFT voulu
+        // Depending on the type of wanted NFT(s), it process a bit differently
         if (_type == 721) {
-            cost = _flashloan721(_nftContract, _executor, _ids, _params) - 1; // le -1 sert a economiser du gas
+            cost = _flashloan721(_nftContract, _executor, _ids, _params) - 1; // This strange -1 actually saves some gas
         }
         else if (_type == 1155) {
             cost = _flashloan1155(_nftContract, _executor,  _ids, _amounts, _params) - 1;
@@ -131,7 +143,7 @@ contract loanft {
 
         require(msg.value > cost || address(this).balance - iniBalance > cost, "Remboursement incorrect");
 
-        // Calcule les parts et envoie les frais de service
+        // Compute and send the platform fees
         uint256 devFee = cost * devShare / 1000;
         collections[_nftContract].collectedFees = cost - devFee;
         payable(owner).transfer(devFee);
@@ -143,22 +155,22 @@ contract loanft {
         IERC721 _contract = IERC721(_nftContract);
         uint256 len = _ids.length;
 
-        // Envoie les NFTs voulus au contrat executeur
+        // Send the wanted NFTs to the loaner smart contract
         for (uint256 i; i<len; i=unsafeIncrement(i)) {
             _contract.transferFrom(address(this), _executor, _ids[i]);
         }
 
-        // Execute le code du flashloan
+        // Execute the floashloan code
         IEmprunteur(_executor).doStuff(_nftContract, _ids, _ids, _params);
 
-        // Verifie que les NFTs sont bien revenus au contrat et les reprend si ce n'est pas le cas
+        // Verify that the NFTs have been returned and take them if not
         for (uint256 i; i<len; i=unsafeIncrement(i)) {
             if (_contract.ownerOf(_ids[i]) != address(this)) {
                 _contract.transferFrom(_executor, address(this), _ids[i]);
             }
         }
 
-        // Renvoie le cout de l'emprunt
+        // Return the cost of the loan
         return len*feePerToken;
 
     }
@@ -167,16 +179,16 @@ contract loanft {
 
         IERC1155 _contract = IERC1155(_nftContract);
 
-        // Envoie les NFTs voulus au contrat executeur
+        // Send the wanted NFTs to the loaner smart contract
         _contract.safeBatchTransferFrom(address(this), _executor, _ids, _amounts,"0x0");
 
-        // Execute le code du flashloan
+        // Execute the floashloan code
         IEmprunteur(_executor).doStuff(_nftContract, _ids, _amounts, _params);
 
-        // Recupere les NFTs empruntés
+        // Take back the NFTs
         _contract.safeBatchTransferFrom(_executor, address(this), _ids, _amounts, "0x0");
 
-        // Calcule le montant des frais d'emprunt
+        // Compute the borrowing fees
         uint256 len = _amounts.length;
         uint256 sum;
         for (uint256 i; i<len; i=unsafeIncrement(i)) {
@@ -185,12 +197,12 @@ contract loanft {
             }
         }
 
-        // Renvoie le cout de l'emprunt
+        // Return the cost of the loan
         return sum*feePerToken;
     }
 
     /*
-        Voir ses recompenses theoriques
+        View your rewards
     */
 
     function rewardsOfUserForCollection(address _user, address _collection, uint256 _type, uint256[] calldata _ids) external view returns(uint256) {
@@ -226,7 +238,7 @@ contract loanft {
 
 
     /*
-        Les recompenses sont reversees regulierement sur ordre du proprietaire afin d'eviter les attaques 
+        Rewards are manually and frequently sent to users to avoid pool attack 
     */
     function sendRewards(address _collection, address[] calldata _users) external onlyOwner {
         uint256 len = _users.length;
@@ -237,7 +249,7 @@ contract loanft {
     }
 
     /*
-        Fonctions casse-couilles d'Openzeppelin
+        Shitty Openzeppelin functions
     */
     function onERC721Received(
         address,
