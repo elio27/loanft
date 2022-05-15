@@ -40,7 +40,7 @@ contract loanft {
     }
 
     modifier onlyOwner() {
-        require(msg.sender == owner, "Permission invalide.");
+        require(msg.sender == owner, "Permission denied.");
         _;
     }
 
@@ -126,7 +126,7 @@ contract loanft {
     */
     function flashloan(address _nftContract, address _executor, uint256 _type, uint[] calldata _ids, uint[] calldata _amounts, bytes calldata _params) external payable {
 
-        // Retient la quantité d'eth dans le contract avant l'execution du flashloan
+        // Saves the eth balance of the contract before anything
         uint256 iniBalance = address(this).balance;
         uint256 cost;
 
@@ -138,7 +138,7 @@ contract loanft {
             cost = _flashloan1155(_nftContract, _executor,  _ids, _amounts, _params) - 1;
         }
         else {
-            revert("Type de token non supporte.");
+            revert("Invalid token type.");
         }
 
         require(msg.value > cost || address(this).balance - iniBalance > cost, "Remboursement incorrect");
